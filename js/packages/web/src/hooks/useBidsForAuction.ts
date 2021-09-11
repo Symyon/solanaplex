@@ -1,13 +1,15 @@
-import React, { useMemo } from 'react';
-import { PublicKey } from '@solana/web3.js';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BidderMetadata,
   BidderMetadataParser,
   cache,
   ParsedAccount,
+  StringPublicKey,
 } from '@oyster/common';
 
-export const useHighestBidForAuction = (auctionPubkey: PublicKey | string) => {
+export const useHighestBidForAuction = (
+  auctionPubkey: StringPublicKey | string,
+) => {
   const bids = useBidsForAuction(auctionPubkey);
 
   const winner = useMemo(() => {
@@ -17,16 +19,38 @@ export const useHighestBidForAuction = (auctionPubkey: PublicKey | string) => {
   return winner;
 };
 
-export const useBidsForAuction = (auctionPubkey: PublicKey | string) => {
+export const useBidsForAuction = (auctionPubkey: StringPublicKey | string) => {
   const id = useMemo(
     () =>
       typeof auctionPubkey === 'string'
-        ? auctionPubkey
-        : auctionPubkey.toBase58(),
+        ? auctionPubkey !== ''
+          ? auctionPubkey
+          : undefined
+        : auctionPubkey,
     [auctionPubkey],
   );
 
-  const bids = cache
+  const [bids, setBids] = useState<ParsedAccount<BidderMetadata>[]>([]);
+
+  useEffect(() => {
+    const dispose = cache.emitter.onCache(args => {
+      if (args.parser === BidderMetadataParser) {
+        setBids(getBids(id));
+      }
+    });
+
+    setBids(getBids(id));
+
+    return () => {
+      dispose();
+    };
+  }, [id]);
+
+  return bids;
+};
+
+const getBids = (id?: StringPublicKey) => {
+  return cache
     .byParser(BidderMetadataParser)
     .filter(key => {
       const bidder = cache.get(key) as ParsedAccount<BidderMetadata>;
@@ -34,7 +58,7 @@ export const useBidsForAuction = (auctionPubkey: PublicKey | string) => {
         return false;
       }
 
-      return bidder.info.auctionPubkey.toBase58() === id;
+      return id === bidder.info.auctionPubkey;
     })
     .map(key => {
       const bidder = cache.get(key) as ParsedAccount<BidderMetadata>;
@@ -49,10 +73,6 @@ export const useBidsForAuction = (auctionPubkey: PublicKey | string) => {
       return lastBidDiff;
     })
     .map(item => {
-      return {
-        ...item,
-      };
+      return item;
     });
-
-  return bids;
 };

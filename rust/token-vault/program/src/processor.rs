@@ -84,6 +84,10 @@ pub fn process_instruction(
                 args.allowed_to_combine,
             )
         }
+        VaultInstruction::SetAuthority => {
+            msg!("Instruction: Set Authority");
+            process_set_authority(program_id, accounts)
+        }
     }
 }
 
@@ -108,6 +112,35 @@ pub fn process_update_external_price_account(
     external_price_account.allowed_to_combine = allowed_to_combine;
 
     external_price_account.serialize(&mut *account.data.borrow_mut())?;
+
+    Ok(())
+}
+
+pub fn process_set_authority(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let vault_info = next_account_info(account_info_iter)?;
+    let current_authority_info = next_account_info(account_info_iter)?;
+    let new_authority_info = next_account_info(account_info_iter)?;
+
+    let mut vault = Vault::from_account_info(vault_info)?;
+    assert_owned_by(vault_info, program_id)?;
+
+    if vault.authority != *current_authority_info.key {
+        return Err(VaultError::InvalidAuthority.into());
+    }
+
+    if !current_authority_info.is_signer {
+        return Err(VaultError::InvalidAuthority.into());
+    }
+
+    // Make sure new authority actually exists in some form.
+    if new_authority_info.data_is_empty() && new_authority_info.lamports() == 0 {
+        msg!("Disallowing new authority because it does not exist.");
+        return Err(VaultError::InvalidAuthority.into());
+    }
+
+    vault.authority = *new_authority_info.key;
+    vault.serialize(&mut *vault_info.data.borrow_mut())?;
 
     Ok(())
 }
@@ -271,8 +304,8 @@ pub fn process_mint_fractional_shares(
     assert_token_program_matches_package(token_program_info)?;
     assert_token_matching(&vault, token_program_info)?;
     assert_owned_by(vault_info, program_id)?;
-    assert_owned_by(fraction_mint_info, &token_program_info.key)?;
-    assert_owned_by(fraction_treasury_info, &token_program_info.key)?;
+    assert_owned_by(fraction_mint_info, token_program_info.key)?;
+    assert_owned_by(fraction_treasury_info, token_program_info.key)?;
     assert_vault_authority_correct(&vault, vault_authority_info)?;
 
     if vault.state != VaultState::Active {
@@ -816,7 +849,7 @@ pub fn process_add_token_to_inactivated_vault(
 
     let seeds = &[
         PREFIX.as_bytes(),
-        &program_id.as_ref(),
+        program_id.as_ref(),
         vault_info.key.as_ref(),
     ];
     let (authority, _) = Pubkey::find_program_address(seeds, program_id);
@@ -931,10 +964,10 @@ pub fn process_init_vault(
 
     let seeds = &[
         PREFIX.as_bytes(),
-        &program_id.as_ref(),
+        program_id.as_ref(),
         vault_info.key.as_ref(),
     ];
-    let (authority, _) = Pubkey::find_program_address(seeds, &program_id);
+    let (authority, _) = Pubkey::find_program_address(seeds, program_id);
 
     match fraction_mint.mint_authority {
         solana_program::program_option::COption::None => {

@@ -26,6 +26,12 @@ pub struct NumberOfShareArgs {
     pub number_of_shares: u64,
 }
 
+#[repr(C)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug, Clone)]
+pub struct MintEditionProxyArgs {
+    pub edition: u64,
+}
+
 /// Instructions supported by the Fraction program.
 #[derive(BorshSerialize, BorshDeserialize, Clone)]
 pub enum VaultInstruction {
@@ -140,6 +146,13 @@ pub enum VaultInstruction {
     /// Useful for testing purposes, and the CLI makes use of it as well so that you can verify logic.
     ///   0. `[writable]` External price account
     UpdateExternalPriceAccount(ExternalPriceAccount),
+
+    /// Sets the authority of the vault to a new authority.
+    ///
+    ///   0. `[writable]` Vault
+    ///   1. `[signer]` Vault authority
+    ///   2. `[]` New authority
+    SetAuthority,
 }
 
 /// Creates an InitVault instruction
@@ -430,5 +443,22 @@ pub fn create_add_shares_instruction(
         data: VaultInstruction::AddSharesToTreasury(NumberOfShareArgs { number_of_shares })
             .try_to_vec()
             .unwrap(),
+    }
+}
+
+pub fn create_set_authority_instruction(
+    program_id: Pubkey,
+    vault: Pubkey,
+    current_authority: Pubkey,
+    new_authority: Pubkey,
+) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(vault, false),
+            AccountMeta::new_readonly(current_authority, true),
+            AccountMeta::new_readonly(new_authority, false),
+        ],
+        data: VaultInstruction::SetAuthority.try_to_vec().unwrap(),
     }
 }
